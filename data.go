@@ -52,9 +52,71 @@ type Tx struct {
 	Value  uint64 `json:"value"`
 }
 
+type VerboseTx struct {
+	Blockhash     string   `json:"blockhash"`
+	Blocktime     uint64   `json:"blocktime"`
+	Confirmations int32    `json:"confirmations"`
+	Hash          string   `json:"hash"`
+	Hex           string   `json:"hex"`
+	Locktime      uint32   `json:"locktime"`
+	Size          uint32   `json:"size"`
+	Time          uint64   `json:"time"`
+	TxID          string   `json:"txid"`
+	Version       uint32   `json:"version"`
+	Vin           []Vin    `json:"vin"`
+	Vout          []Vout   `json:"vout"`
+	Merkle        TxMerkle `json:"merkle,omitempty"` // For protocol v1.5 and up.
+}
+
+// ScriptPubKey represents the script of that transaction output.
+type ScriptPubKey struct {
+	Addresses []string `json:"addresses,omitempty"`
+	Address   string   `json:"address,omitempty"`
+	Asm       string   `json:"asm"`
+	Hex       string   `json:"hex,omitempty"`
+	ReqSigs   uint32   `json:"reqSigs,omitempty"`
+	Type      string   `json:"type"`
+}
+
+// Vout represents the output side of a transaction.
+type Vout struct {
+	N            uint32       `json:"n"`
+	ScriptPubKey ScriptPubKey `json:"scriptPubKey"`
+	Value        float64      `json:"value"`
+}
+
+// ScriptSig represents the signature script for that transaction input.
+type ScriptSig struct {
+	Asm string `json:"asm"`
+	Hex string `json:"hex"`
+}
+
+// Vin represents the input side of a transaction.
+type Vin struct {
+	Coinbase  string    `json:"coinbase"`
+	ScriptSig ScriptSig `json:"scriptSig"`
+	Sequence  uint32    `json:"sequence"`
+	TxID      string    `json:"txid"`
+	Vout      uint32    `json:"vout"`
+}
+
+type VinWithPrevout struct {
+	*Vin
+	Prevout *Vout `json:"prevout"`
+}
+
+// RichTx represents a transaction entry on the blockchain with VinWithPrevout
+type RichTx struct {
+	VerboseTx
+	Vin          []VinWithPrevout `json:"vin"`
+	InputsTotal  float64          `json:"inputs_total"`
+	OutputsTotal float64          `json:"outputs_total"`
+	FeeInSat     float64          `json:"fee_in_sat"`
+}
+
 // TxMerkle provides the merkle branch of a given transaction
 type TxMerkle struct {
-	BlockHeight string   `json:"block_height"`
+	BlockHeight float64  `json:"block_height"`
 	Pos         uint64   `json:"pos"`
 	Merkle      []string `json:"merkle"`
 }

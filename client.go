@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Version flag for the library
@@ -18,9 +20,11 @@ const Version = "0.4.1"
 
 // Protocol tags
 const (
-	Protocol10 = "1.0"
-	Protocol11 = "1.1"
-	Protocol12 = "1.2"
+	Protocol10   = "1.0"
+	Protocol11   = "1.1"
+	Protocol12   = "1.2"
+	Protocol14   = "1.4"
+	Protocol14_2 = "1.4.2"
 )
 
 // Common errors
@@ -84,6 +88,8 @@ type Client struct {
 	resuming     context.Context
 	stopResuming context.CancelFunc
 	sync.Mutex
+
+	txCache *TxCache
 }
 
 type subscription struct {
@@ -107,7 +113,7 @@ func New(options *Options) (*Client, error) {
 	// By default use the latest supported protocol version
 	// https://electrumx.readthedocs.io/en/latest/protocol-changes.html
 	if options.Protocol == "" {
-		options.Protocol = Protocol12
+		options.Protocol = Protocol14_2
 	}
 
 	// Use library version as default client version
@@ -148,7 +154,10 @@ func New(options *Options) (*Client, error) {
 					// "server.ping" is not recognized by the server in the current release (1.4.3)
 					if b, err := client.req("server.version", client.Version, client.Protocol).encode(); err == nil {
 						/* #nosec */
-						client.transport.sendMessage(b)
+						err = client.transport.sendMessage(b)
+						if err != nil && client.log != nil {
+							client.log.Println(err)
+						}
 					}
 				case <-client.bgProcessing.Done():
 					return
@@ -368,6 +377,10 @@ func (c *Client) Close() {
 func (c *Client) ServerPing() error {
 	switch c.Protocol {
 	case Protocol12:
+		fallthrough
+	case Protocol14:
+		fallthrough
+	case Protocol14_2:
 		res, err := c.syncRequest(c.req("server.ping"))
 		if err != nil {
 			return err
@@ -401,6 +414,10 @@ func (c *Client) ServerVersion() (*VersionInfo, error) {
 	case Protocol11:
 		fallthrough
 	case Protocol12:
+		fallthrough
+	case Protocol14:
+		fallthrough
+	case Protocol14_2:
 		var d []string
 		b, err := json.Marshal(res.Result)
 		if err != nil {
@@ -716,6 +733,42 @@ func (c *Client) GetTransaction(hash string) (string, error) {
 	return res.Result.(string), nil
 }
 
+func (c *Client) GetVerboseTransaction(hash string) (*VerboseTx, error) {
+	tx := new(VerboseTx)
+
+	if ok := c.txCache.Load(hash, tx); ok {
+		c.log.Printf("Tx %s found in cache", hash)
+		return tx, nil
+	}
+
+	res, err := c.syncRequest(c.req("blockchain.transaction.get", hash, "true"))
+	if err != nil {
+		return nil, fmt.Errorf("error getting verbose transaction %s: %w", hash, err)
+	}
+
+	if res.Error != nil {
+		return nil, fmt.Errorf("error getting verbose transaction %s: %w", hash, errors.New(res.Error.Message))
+	}
+
+	b, err := json.Marshal(res.Result)
+	if err != nil {
+		return nil, fmt.Errorf("error getting verbose transaction %s: %w", hash, err)
+	}
+
+	if err = json.Unmarshal(b, tx); err != nil {
+		return nil, fmt.Errorf("error getting verbose transaction %s: %w", hash, err)
+	}
+
+	if tx.Confirmations > 0 {
+		err := c.txCache.Store(hash, *tx)
+		if err != nil {
+			c.log.Printf("Store tx %s in cache failed: %v", hash, err)
+		}
+	}
+
+	return tx, nil
+}
+
 // EstimateFee will synchronously run a 'blockchain.estimatefee' operation
 //
 // https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-estimatefee
@@ -755,4 +808,90 @@ func (c *Client) TransactionMerkle(tx string, height int) (tm *TxMerkle, err err
 		return
 	}
 	return
+}
+
+// GetTransactionOutput gets the Vout from a transaction.
+func (c *Client) GetTransactionOutput(
+	ctx context.Context,
+	hash string,
+	voutIndex uint32,
+) (*Vout, error) {
+	tx, err := c.GetVerboseTransaction(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tx.Vout[voutIndex], nil
+}
+
+// Details a transaction by adding Prevout to Vin.
+func (c *Client) EnrichTransaction(
+	ctx context.Context,
+	tx *VerboseTx,
+) (*RichTx, error) {
+	richTx := RichTx{
+		VerboseTx:    *tx,
+		Vin:          []VinWithPrevout{}, // empty now
+		InputsTotal:  0,
+		OutputsTotal: 0,
+		FeeInSat:     0,
+	}
+
+	if ok := c.txCache.Load(tx.TxID, &richTx); ok {
+		c.log.Printf("DetailedTx %s found in cache", tx.TxID)
+		return &richTx, nil
+	}
+
+	mtx := sync.Mutex{}
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(20)
+	for _, vin := range tx.Vin {
+		vin := vin // copy vin
+		eg.Go(func() error {
+			prevout, err := c.GetTransactionOutput(
+				ctx,
+				vin.TxID,
+				vin.Vout,
+			)
+			if err != nil {
+				return err
+			}
+			c.log.Printf(
+				"from tx %s vin.tx %s prevout address & value: %v %f",
+				tx.TxID,
+				vin.TxID,
+				getAddressFromVout(*prevout),
+				prevout.Value,
+			)
+			mtx.Lock()
+			defer mtx.Unlock()
+			richTx.Vin = append(
+				richTx.Vin,
+				VinWithPrevout{
+					Vin:     &vin,
+					Prevout: prevout,
+				},
+			)
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	// calculate inputsTotal, outputsTotal, feeInSat
+	for _, vout := range tx.Vout {
+		richTx.OutputsTotal += vout.Value
+	}
+	for _, vin := range richTx.Vin {
+		richTx.InputsTotal += vin.Prevout.Value
+	}
+	richTx.FeeInSat = richTx.InputsTotal - richTx.OutputsTotal
+
+	err := c.txCache.Store(tx.TxID, richTx)
+	if err != nil {
+		c.log.Printf("Store detailedTx %s in cache failed: %v", tx.TxID, err)
+	}
+
+	return &richTx, nil
 }

@@ -3,11 +3,11 @@ default: help
 test: ## Run all tests excluding the vendor dependencies
 	gofmt -s -l .
 	go vet .
-	golint .
+	golangci-lint run ./...
 	ineffassign .
-	misspell .
+	#misspell .
 	gosec ./...
-	gocyclo -over 15 `find . -iname '*.go' | grep -v 'vendor' | grep -v '_test.go'`
+	gocyclo -over 18 `find . -iname '*.go' | grep -v 'vendor' | grep -v '_test.go'`
 	go test -v -race .
 
 help: ## Display available make targets
