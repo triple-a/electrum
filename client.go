@@ -540,6 +540,30 @@ func (c *Client) AddressBalance(address string) (balance *Balance, err error) {
 	return
 }
 
+func (c *Client) ScriptHashBalance(scriptHash string) (*Balance, error) {
+	balance := new(Balance)
+
+	res, err := c.syncRequest(c.req("blockchain.scripthash.get_balance", scriptHash))
+	if err != nil {
+		return nil, fmt.Errorf("error getting balance for scripthash %s: %w", scriptHash, err)
+	}
+
+	if res.Error != nil {
+		return nil, fmt.Errorf("error getting balance for scripthash %s: %w", scriptHash, errors.New(res.Error.Message))
+	}
+
+	b, err := json.Marshal(res.Result)
+	if err != nil {
+		return nil, fmt.Errorf("error getting balance for scripthash %s: %w", scriptHash, err)
+	}
+
+	if err = json.Unmarshal(b, &res.Result); err != nil {
+		return nil, fmt.Errorf("error getting balance for scripthash %s: %w", scriptHash, err)
+	}
+
+	return balance, nil
+}
+
 // AddressHistory will synchronously run a 'blockchain.address.get_history' operation
 //
 // https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-address-get-history
@@ -562,6 +586,30 @@ func (c *Client) AddressHistory(address string) (list *[]Tx, err error) {
 		return
 	}
 	return
+}
+
+func (c *Client) ScriptHashHistory(scriptHash string) (*[]Tx, error) {
+	list := new([]Tx)
+
+	res, err := c.syncRequest(c.req("blockchain.scripthash.get_history", scriptHash))
+	if err != nil {
+		return nil, fmt.Errorf("error getting history for scripthash %s: %w", scriptHash, err)
+	}
+
+	if res.Error != nil {
+		return nil, fmt.Errorf("error getting history for scripthash %s: %w", scriptHash, errors.New(res.Error.Message))
+	}
+
+	b, err := json.Marshal(res.Result)
+	if err != nil {
+		return nil, fmt.Errorf("error getting history for scripthash %s: %w", scriptHash, err)
+	}
+
+	if err = json.Unmarshal(b, &list); err != nil {
+		return nil, fmt.Errorf("error getting history for scripthash %s: %w", scriptHash, err)
+	}
+
+	return list, nil
 }
 
 // AddressMempool will synchronously run a 'blockchain.address.get_mempool' operation
