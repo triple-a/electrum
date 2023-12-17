@@ -1,1 +1,3 @@
-module github.com/fairbank-io/electrum
+module github.com/triple-a/electrum
+
+go 1.21.4
