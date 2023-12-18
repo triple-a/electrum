@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const defultTimeout = 30 * time.Second
+
 // ConnectionState represents known connection state values
 type ConnectionState string
 
@@ -36,11 +38,15 @@ type transport struct {
 type transportOptions struct {
 	address string
 	tls     *tls.Config
+	timeout time.Duration
 }
 
 // Get network connection
 func connect(opts *transportOptions) (net.Conn, error) {
-	conn, err := net.Dial("tcp", opts.address)
+	if opts.timeout == 0 {
+		opts.timeout = defultTimeout
+	}
+	conn, err := net.DialTimeout("tcp", opts.address, opts.timeout)
 	if err != nil {
 		return nil, err
 	}

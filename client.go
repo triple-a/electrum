@@ -272,6 +272,9 @@ func (c *Client) removeSubscription(id int) {
 // Restart processing of existing subscriptions; intended to be triggered after
 // recovering from a dropped connection
 func (c *Client) resumeSubscriptions() {
+	c.Lock()
+	defer c.Unlock()
+
 	// Handle existing resume attempts
 	if c.stopResuming != nil {
 		c.stopResuming()
