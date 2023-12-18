@@ -63,6 +63,8 @@ type Options struct {
 
 	// If provided, will be used as logging sink
 	Log *log.Logger
+
+	Timemout time.Duration
 }
 
 // Client defines the protocol client instance structure and interface
@@ -105,6 +107,7 @@ func New(options *Options) (*Client, error) {
 	t, err := getTransport(&transportOptions{
 		address: options.Address,
 		tls:     options.TLS,
+		timeout: options.Timemout,
 	})
 	if err != nil {
 		return nil, err
