@@ -11,9 +11,11 @@ import (
 	"time"
 )
 
+const testServer = "electrum.bitaroo.net:50002" // erbium1.sytes.net:50002 | ex-btc.server-on.net:50002
+
 func TestClient(t *testing.T) {
 	const testAddress = "1ErbiumBjW4ScHNhLCcNWK5fFsKFpsYpWb"
-	const testServer = "electrum.bitaroo.net:50002" // erbium1.sytes.net:50002 | ex-btc.server-on.net:50002
+	const testScriptHash = "69960ffb520c7662430d15d9c0a75adc204619f562c6a9316288ec8bb4e288a5"
 
 	t.Run("Protocol_1.4", func(t *testing.T) {
 		client, err := New(&Options{
@@ -89,14 +91,14 @@ func TestClient(t *testing.T) {
 			}
 		})
 
-		// t.Run("AddressBalance", func(t *testing.T) {
-		// 	balance, err := client.AddressBalance(testAddress)
-		// 	if err != nil {
-		// 		t.Error(err)
-		// 		return
-		// 	}
-		// 	log.Printf("Balance: %+v\n", balance)
-		// })
+		t.Run("ScriptHashBalance", func(t *testing.T) {
+			balance, err := client.ScriptHashBalance(testScriptHash)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			log.Printf("Balance: %+v\n", balance)
+		})
 
 		// t.Run("AddressMempool", func(t *testing.T) {
 		// 	mempool, err := client.AddressMempool(testAddress)
@@ -107,14 +109,14 @@ func TestClient(t *testing.T) {
 		// 	log.Printf("Mempool: %+v\n", mempool)
 		// })
 
-		// t.Run("AddressHistory", func(t *testing.T) {
-		// 	history, err := client.AddressHistory(testAddress)
-		// 	if err != nil {
-		// 		t.Error(err)
-		// 		return
-		// 	}
-		// 	log.Printf("History: %+v\n", history)
-		// })
+		t.Run("ScriptHashHistory", func(t *testing.T) {
+			history, err := client.ScriptHashHistory(testScriptHash)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			log.Printf("History: %+v\n", history)
+		})
 
 		// t.Run("AddressListUnspent", func(t *testing.T) {
 		// 	utxo, err := client.AddressListUnspent(testAddress)
@@ -244,7 +246,7 @@ func TestClient(t *testing.T) {
 
 func ExampleClient_ServerVersion() {
 	client, err := New(&Options{
-		Address: "electrum.bitaroo.net:50002",
+		Address: testServer,
 		TLS: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -265,7 +267,7 @@ func ExampleClient_ServerVersion() {
 
 func ExampleClient_ServerDonationAddress() {
 	client, err := New(&Options{
-		Address: "electrum.bitaroo.net:50002",
+		Address: testServer,
 		TLS: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -282,4 +284,95 @@ func ExampleClient_ServerDonationAddress() {
 	}
 	fmt.Println(addr)
 	// Output: 36UgQmHjUainV6B7HV58vmV3gAc1w3Rurt
+}
+
+func ExampleClient_ScriptHashBalance() {
+	client, err := New(&Options{
+		Address: testServer,
+		TLS: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer client.Close()
+	// address: 13aoDNsMJ8w1EAvT8LkH8WnAYrygBAUUF1
+	balance, err := client.ScriptHashBalance("9e973caf3b602db193b420497a043ea99225976eff5a33037a107ac291882c70")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(balance.Confirmed)
+	// Output: 582991
+}
+
+func ExampleClient_ScriptHashHistory() {
+	client, err := New(&Options{
+		Address: testServer,
+		TLS: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer client.Close()
+	// address: 13aoDNsMJ8w1EAvT8LkH8WnAYrygBAUUF1
+	history, err := client.ScriptHashHistory("9e973caf3b602db193b420497a043ea99225976eff5a33037a107ac291882c70")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println((*history)[0].Height)
+	// Output: 768424
+}
+
+func ExampleClient_GetVerboseTransaction() {
+	client, err := New(&Options{
+		Address: testServer,
+		TLS: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer client.Close()
+	tx, err := client.GetVerboseTransaction("4f73e43b92d337da8e69417601de1476bd7577cbac901fa28dba37ce1362adb9")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("%d %d\n", tx.Blocktime, len(tx.Vin))
+	// Output: 1512206656 1
+}
+
+func ExampleClient_EnrichTransaction() {
+	client, err := New(&Options{
+		Address: testServer,
+		TLS: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer client.Close()
+	tx, err := client.GetVerboseTransaction("4f73e43b92d337da8e69417601de1476bd7577cbac901fa28dba37ce1362adb9")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	richTx, err := client.EnrichTransaction(tx)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(richTx.Vin[0].Prevout.Value, richTx.Vin[0].Prevout.ScriptPubKey.Addresses[0])
+	// Output: 0.0005 1ECYoJpqd3KtngTr2QuefZpp57qSoWynqY
 }

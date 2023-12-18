@@ -57,7 +57,7 @@ func (c *Client) NotifyAddressTransactions(ctx context.Context, address string) 
 	sub := &subscription{
 		ctx:      ctx,
 		method:   "blockchain.address.subscribe",
-		params:   []string{address},
+		params:   []any{address},
 		messages: make(chan *response),
 		handler: func(m *response) {
 			if m.Result != nil {

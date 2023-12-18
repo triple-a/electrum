@@ -161,10 +161,10 @@ type response struct {
 // Protocol request structure
 // http://docs.electrum.org/en/latest/protocol.html#request
 type request struct {
-	RPC    string   `json:"jsonrpc"`
-	ID     int      `json:"id"`
-	Method string   `json:"method"`
-	Params []string `json:"params"`
+	RPC    string `json:"jsonrpc"`
+	ID     int    `json:"id"`
+	Method string `json:"method"`
+	Params []any  `json:"params"`
 }
 
 // Properly encode a request object and append the message delimiter

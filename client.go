@@ -94,7 +94,7 @@ type Client struct {
 
 type subscription struct {
 	method   string
-	params   []string
+	params   []any
 	messages chan *response
 	handler  func(*response)
 	ctx      context.Context
@@ -126,6 +126,11 @@ func New(options *Options) (*Client, error) {
 		options.Agent = "fairbank-electrum"
 	}
 
+	txCache, err := NewTxCache(nil)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &Client{
 		transport:    t,
@@ -139,6 +144,7 @@ func New(options *Options) (*Client, error) {
 		Address:      options.Address,
 		Version:      options.Version,
 		Protocol:     options.Protocol,
+		txCache:      txCache,
 	}
 
 	// Automatically send a 'server.version' or 'server.ping' request every 60 seconds as a keep-alive
@@ -188,14 +194,14 @@ func New(options *Options) (*Client, error) {
 }
 
 // Build a request object
-func (c *Client) req(name string, params ...string) *request {
+func (c *Client) req(name string, params ...any) *request {
 	c.Lock()
 	defer c.Unlock()
 
 	// If no parameters are specified send an empty array
 	// http://docs.electrum.org/en/latest/protocol.html#request
 	if len(params) == 0 {
-		params = []string{}
+		params = []any{}
 	}
 	req := &request{
 		ID:     c.counter,
@@ -574,7 +580,7 @@ func (c *Client) ScriptHashBalance(scriptHash string) (*Balance, error) {
 		return nil, fmt.Errorf("error getting balance for scripthash %s: %w", scriptHash, err)
 	}
 
-	if err = json.Unmarshal(b, &res.Result); err != nil {
+	if err = json.Unmarshal(b, balance); err != nil {
 		return nil, fmt.Errorf("error getting balance for scripthash %s: %w", scriptHash, err)
 	}
 
@@ -737,11 +743,13 @@ func (c *Client) GetVerboseTransaction(hash string) (*VerboseTx, error) {
 	tx := new(VerboseTx)
 
 	if ok := c.txCache.Load(hash, tx); ok {
-		c.log.Printf("Tx %s found in cache", hash)
+		if c.log != nil {
+			c.log.Printf("Tx %s found in cache", hash)
+		}
 		return tx, nil
 	}
 
-	res, err := c.syncRequest(c.req("blockchain.transaction.get", hash, "true"))
+	res, err := c.syncRequest(c.req("blockchain.transaction.get", hash, true))
 	if err != nil {
 		return nil, fmt.Errorf("error getting verbose transaction %s: %w", hash, err)
 	}
@@ -812,7 +820,6 @@ func (c *Client) TransactionMerkle(tx string, height int) (tm *TxMerkle, err err
 
 // GetTransactionOutput gets the Vout from a transaction.
 func (c *Client) GetTransactionOutput(
-	ctx context.Context,
 	hash string,
 	voutIndex uint32,
 ) (*Vout, error) {
@@ -826,7 +833,6 @@ func (c *Client) GetTransactionOutput(
 
 // Details a transaction by adding Prevout to Vin.
 func (c *Client) EnrichTransaction(
-	ctx context.Context,
 	tx *VerboseTx,
 ) (*RichTx, error) {
 	richTx := RichTx{
@@ -838,31 +844,22 @@ func (c *Client) EnrichTransaction(
 	}
 
 	if ok := c.txCache.Load(tx.TxID, &richTx); ok {
-		c.log.Printf("DetailedTx %s found in cache", tx.TxID)
 		return &richTx, nil
 	}
 
 	mtx := sync.Mutex{}
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.SetLimit(20)
+	errGrp := errgroup.Group{}
+	errGrp.SetLimit(20)
 	for _, vin := range tx.Vin {
 		vin := vin // copy vin
-		eg.Go(func() error {
+		errGrp.Go(func() error {
 			prevout, err := c.GetTransactionOutput(
-				ctx,
 				vin.TxID,
 				vin.Vout,
 			)
 			if err != nil {
 				return err
 			}
-			c.log.Printf(
-				"from tx %s vin.tx %s prevout address & value: %v %f",
-				tx.TxID,
-				vin.TxID,
-				getAddressFromVout(*prevout),
-				prevout.Value,
-			)
 			mtx.Lock()
 			defer mtx.Unlock()
 			richTx.Vin = append(
@@ -875,7 +872,7 @@ func (c *Client) EnrichTransaction(
 			return nil
 		})
 	}
-	if err := eg.Wait(); err != nil {
+	if err := errGrp.Wait(); err != nil {
 		return nil, err
 	}
 

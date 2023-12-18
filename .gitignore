@@ -10,3 +10,5 @@ vendor/**
 *.csr
 *.pem
 *.key
+
+tx_cache.db

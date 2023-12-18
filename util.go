@@ -1,6 +1,6 @@
 package electrum
 
-func getAddressFromVout(vout Vout) string {
+func GetAddressFromVout(vout Vout) string {
 	if vout.ScriptPubKey.Address != "" {
 		return vout.ScriptPubKey.Address
 	}
