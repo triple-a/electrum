@@ -545,30 +545,9 @@ func (c *Client) ServerPeers() (peers []*Peer, err error) {
 	return
 }
 
-// AddressBalance will synchronously run a 'blockchain.address.get_balance' operation
+// ScriptHashBalanceBalance will synchronously run a 'blockchain.scripthash.get_balance' operation
 //
-// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-address-get-balance
-func (c *Client) AddressBalance(address string) (balance *Balance, err error) {
-	res, err := c.syncRequest(c.req("blockchain.address.get_balance", address))
-	if err != nil {
-		return
-	}
-
-	if res.Error != nil {
-		err = errors.New(res.Error.Message)
-		return
-	}
-
-	b, err := json.Marshal(res.Result)
-	if err != nil {
-		return
-	}
-	if err = json.Unmarshal(b, &balance); err != nil {
-		return
-	}
-	return
-}
-
+// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-get-balance
 func (c *Client) ScriptHashBalance(scriptHash string) (*Balance, error) {
 	balance := new(Balance)
 
@@ -593,32 +572,11 @@ func (c *Client) ScriptHashBalance(scriptHash string) (*Balance, error) {
 	return balance, nil
 }
 
-// AddressHistory will synchronously run a 'blockchain.address.get_history' operation
+// ScriptHashHistory will synchronously run a 'blockchain.scripthash.get_history' operation
 //
-// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-address-get-history
-func (c *Client) AddressHistory(address string) (list *[]Tx, err error) {
-	res, err := c.syncRequest(c.req("blockchain.address.get_history", address))
-	if err != nil {
-		return
-	}
-
-	if res.Error != nil {
-		err = errors.New(res.Error.Message)
-		return
-	}
-
-	b, err := json.Marshal(res.Result)
-	if err != nil {
-		return
-	}
-	if err = json.Unmarshal(b, &list); err != nil {
-		return
-	}
-	return
-}
-
-func (c *Client) ScriptHashHistory(scriptHash string) (*[]Tx, error) {
-	list := new([]Tx)
+// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-get-history
+func (c *Client) ScriptHashHistory(scriptHash string) ([]Tx, error) {
+	list := []Tx{}
 
 	res, err := c.syncRequest(c.req("blockchain.scripthash.get_history", scriptHash))
 	if err != nil {
@@ -641,59 +599,64 @@ func (c *Client) ScriptHashHistory(scriptHash string) (*[]Tx, error) {
 	return list, nil
 }
 
-// AddressMempool will synchronously run a 'blockchain.address.get_mempool' operation
+// ScriptHashMempool will synchronously run a 'blockchain.scripthash.get_mempool' operation
 //
-// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-address-get-mempool
-func (c *Client) AddressMempool(address string) (list *[]Tx, err error) {
-	res, err := c.syncRequest(c.req("blockchain.address.get_mempool", address))
+// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-get-mempool
+func (c *Client) ScriptHashMempool(scripthash string) ([]Tx, error) {
+	list := []Tx{}
+
+	res, err := c.syncRequest(c.req("blockchain.scripthash.get_mempool", scripthash))
 	if err != nil {
-		return
+		return nil, fmt.Errorf("error getting mempool for scripthash %s: %w", scripthash, err)
 	}
 
 	if res.Error != nil {
 		err = errors.New(res.Error.Message)
-		return
+		return nil, fmt.Errorf("error getting mempool for scripthash %s: %w", scripthash, err)
 	}
 
 	b, err := json.Marshal(res.Result)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("error getting mempool for scripthash %s: %w", scripthash, err)
 	}
 	if err = json.Unmarshal(b, &list); err != nil {
-		return
+		return nil, fmt.Errorf("error getting mempool for scripthash %s: %w", scripthash, err)
 	}
-	return
+	return list, nil
 }
 
-// AddressListUnspent will synchronously run a 'blockchain.address.listunspent' operation
+// ScriptHashListUnspent will synchronously run a 'blockchain.scripthash.listunspent' operation
 //
-// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-address-listunspent
-func (c *Client) AddressListUnspent(address string) (list *[]Tx, err error) {
-	res, err := c.syncRequest(c.req("blockchain.address.listunspent", address))
+// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-listunspent
+func (c *Client) ScriptHashListUnspent(scripthash string) ([]Tx, error) {
+	list := []Tx{}
+
+	res, err := c.syncRequest(c.req("blockchain.scripthash.listunspent", scripthash))
 	if err != nil {
-		return
+		return nil, fmt.Errorf("error getting listunspent for scripthash %s: %w", scripthash, err)
 	}
 
 	if res.Error != nil {
 		err = errors.New(res.Error.Message)
-		return
+		return nil, fmt.Errorf("error getting listunspent for scripthash %s: %w", scripthash, err)
 	}
 
 	b, err := json.Marshal(res.Result)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("error getting listunspent for scripthash %s: %w", scripthash, err)
 	}
 	if err = json.Unmarshal(b, &list); err != nil {
-		return
+		return nil, fmt.Errorf("error getting listunspent for scripthash %s: %w", scripthash, err)
 	}
-	return
+	return list, nil
 }
 
-// BlockHeader will synchronously run a 'blockchain.block.get_header' operation
+// BlockHeader will synchronously run a 'blockchain.block.header' operation
 //
-// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-block-get-header
+// https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-block-header
+
 func (c *Client) BlockHeader(index int) (header *BlockHeader, err error) {
-	res, err := c.syncRequest(c.req("blockchain.block.get_header", strconv.Itoa(index)))
+	res, err := c.syncRequest(c.req("blockchain.block.header", index, index+1))
 	if err != nil {
 		return
 	}

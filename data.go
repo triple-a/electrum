@@ -132,14 +132,17 @@ type Balance struct {
 
 // BlockHeader display summarized details about an existing block in the chain
 type BlockHeader struct {
-	BlockHeight   uint64 `json:"block_height"`
-	PrevBlockHash string `json:"prev_block_hash"`
-	Timestamp     uint64 `json:"timestamp"`
-	Nonce         uint64 `json:"nonce"`
-	MerkleRoot    string `json:"merkle_root"`
-	UtxoRoot      string `json:"utxo_root"`
-	Version       int    `json:"version"`
-	Bits          uint64 `json:"bits"`
+	Branch []string `json:"branch"`
+	Header string   `json:"header"`
+	Root   string   `json:"root"`
+}
+
+type BlockHanders struct {
+	Count   uint32   `json:"count"`
+	Headers string   `json:"hex"`
+	Max     uint32   `json:"max"`
+	Branch  []string `json:"branch,omitempty"`
+	Root    string   `json:"root,omitempty"`
 }
 
 // RPC error

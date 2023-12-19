@@ -100,14 +100,14 @@ func TestClient(t *testing.T) {
 			log.Printf("Balance: %+v\n", balance)
 		})
 
-		// t.Run("AddressMempool", func(t *testing.T) {
-		// 	mempool, err := client.AddressMempool(testAddress)
-		// 	if err != nil {
-		// 		t.Error(err)
-		// 		return
-		// 	}
-		// 	log.Printf("Mempool: %+v\n", mempool)
-		// })
+		t.Run("ScriptHashMempool", func(t *testing.T) {
+			mempool, err := client.ScriptHashMempool(testScriptHash)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			log.Printf("Mempool: %+v\n", mempool)
+		})
 
 		t.Run("ScriptHashHistory", func(t *testing.T) {
 			history, err := client.ScriptHashHistory(testScriptHash)
@@ -118,23 +118,23 @@ func TestClient(t *testing.T) {
 			log.Printf("History: %+v\n", history)
 		})
 
-		// t.Run("AddressListUnspent", func(t *testing.T) {
-		// 	utxo, err := client.AddressListUnspent(testAddress)
-		// 	if err != nil {
-		// 		t.Error(err)
-		// 		return
-		// 	}
-		// 	log.Printf("Unspent: %+v\n", utxo)
-		// })
+		t.Run("ScriptHashListUnspent", func(t *testing.T) {
+			utxo, err := client.ScriptHashListUnspent(testScriptHash)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			log.Printf("Unspent: %+v\n", utxo)
+		})
 
-		// t.Run("BlockHeader", func(t *testing.T) {
-		// 	header, err := client.BlockHeader(56770)
-		// 	if err != nil {
-		// 		t.Error(err)
-		// 		return
-		// 	}
-		// 	log.Printf("Header: %+v\n", header)
-		// })
+		t.Run("BlockHeader", func(t *testing.T) {
+			header, err := client.BlockHeader(56770)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			log.Printf("Header: %+v\n", header)
+		})
 
 		t.Run("BroadcastTransaction", func(t *testing.T) {
 			res, err := client.BroadcastTransaction("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0702621b03cfd201ffffffff010000000000000000016a00000000")
@@ -326,7 +326,7 @@ func ExampleClient_ScriptHashHistory() {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println((*history)[0].Height)
+	fmt.Println((history)[0].Height)
 	// Output: 768424
 }
 
