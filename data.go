@@ -120,7 +120,7 @@ type RichTx struct {
 	Vin          []VinWithPrevout `json:"vin"`
 	InputsTotal  float64          `json:"inputs_total"`
 	OutputsTotal float64          `json:"outputs_total"`
-	FeeInSat     float64          `json:"fee_in_sat"`
+	FeeInSat     int64            `json:"fee_in_sat"`
 	Height       int64            `json:"height"`
 	Fee          uint32           `json:"fee,omitempty"`
 }
@@ -135,8 +135,8 @@ type TxMerkle struct {
 // Balance show the funds available to an address, both
 // confirmed and unconfirmed
 type Balance struct {
-	Confirmed   uint64 `json:"confirmed"`
-	Unconfirmed uint64 `json:"unconfirmed"`
+	Confirmed   int64 `json:"confirmed"`
+	Unconfirmed int64 `json:"unconfirmed"`
 }
 
 // BlockHeader display summarized details about an existing block in the chain
