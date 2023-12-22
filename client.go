@@ -602,8 +602,8 @@ func (c *Client) ScriptHashHistory(scriptHash string) ([]Tx, error) {
 // ScriptHashMempool will synchronously run a 'blockchain.scripthash.get_mempool' operation
 //
 // https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-get-mempool
-func (c *Client) ScriptHashMempool(scripthash string) ([]Tx, error) {
-	list := []Tx{}
+func (c *Client) ScriptHashMempool(scripthash string) ([]MempoolTx, error) {
+	list := []MempoolTx{}
 
 	res, err := c.syncRequest(c.req("blockchain.scripthash.get_mempool", scripthash))
 	if err != nil {
@@ -628,8 +628,8 @@ func (c *Client) ScriptHashMempool(scripthash string) ([]Tx, error) {
 // ScriptHashListUnspent will synchronously run a 'blockchain.scripthash.listunspent' operation
 //
 // https://electrumx.readthedocs.io/en/latest/protocol-methods.html#blockchain-scripthash-listunspent
-func (c *Client) ScriptHashListUnspent(scripthash string) ([]Tx, error) {
-	list := []Tx{}
+func (c *Client) ScriptHashListUnspent(scripthash string) ([]UnspentTx, error) {
+	list := []UnspentTx{}
 
 	res, err := c.syncRequest(c.req("blockchain.scripthash.listunspent", scripthash))
 	if err != nil {

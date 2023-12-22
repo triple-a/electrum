@@ -47,9 +47,18 @@ type Peer struct {
 // Tx represents a transaction entry on the blockchain
 type Tx struct {
 	Hash   string `json:"tx_hash"`
-	Pos    uint64 `json:"tx_pos"`
 	Height uint64 `json:"height"`
-	Value  uint64 `json:"value"`
+}
+
+type MempoolTx struct {
+	Tx
+	Fee uint64 `json:"fee"`
+}
+
+type UnspentTx struct {
+	Tx
+	Value uint64 `json:"value"`
+	Pos   uint64 `json:"tx_pos"`
 }
 
 type VerboseTx struct {
