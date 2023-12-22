@@ -852,7 +852,7 @@ func (c *Client) EnrichTransaction(
 	for _, vin := range richTx.Vin {
 		richTx.InputsTotal += vin.Prevout.Value
 	}
-	richTx.FeeInSat = richTx.InputsTotal - richTx.OutputsTotal
+	richTx.FeeInSat = int64(richTx.InputsTotal - richTx.OutputsTotal)
 
 	err := c.txCache.Store(tx.TxID, richTx)
 	if err != nil {
