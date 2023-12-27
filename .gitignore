@@ -12,3 +12,4 @@ vendor/**
 *.key
 
 tx_cache.db
+*.bak
