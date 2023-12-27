@@ -37,9 +37,11 @@ var (
 // http://docs.electrum.org/en/latest/protocol.html#format
 const (
 	delimiter  = byte('\n')
-	comma      = byte(',')
-	arrayStart = byte('[')
-	arrayEnd   = byte(']')
+	comma      = ","
+	arrayStart = "["
+	arrayEnd   = "]"
+
+	DefaultBatchSize = 80
 )
 
 // Options define the available configuration options
@@ -199,6 +201,12 @@ func New(options *Options) (*Client, error) {
 	return client, nil
 }
 
+func (c *Client) debug(msg string, args ...any) {
+	if c.log != nil {
+		_ = c.log.Output(2, fmt.Sprintf(msg, args...))
+	}
+}
+
 // Build a request object
 func (c *Client) req(name string, params ...any) *request {
 	c.Lock()
@@ -234,22 +242,19 @@ func (c *Client) handleMessages() {
 	for {
 		select {
 		case <-c.done:
-			for i := range c.subs {
-				c.removeSubscription(i)
+			for id := range c.subs {
+				c.removeSubscription(id)
 			}
 			c.cleanUp()
 			return
 		case err := <-c.transport.errors:
-			if c.log != nil {
-				c.log.Println(err)
-			}
+			c.debug("transport error: %s", err)
 		case m := <-c.transport.messages:
-			if c.log != nil {
-				c.log.Println(m)
-			}
+			c.debug("received msg: %s", m)
 
 			var result interface{}
-			if err := json.Unmarshal(m, &result); err == nil {
+			if err := json.Unmarshal(m, &result); err != nil {
+				c.debug("error unmarshalling any: %v\n", err)
 				break
 			}
 
@@ -257,6 +262,7 @@ func (c *Client) handleMessages() {
 			if _, ok := result.([]interface{}); ok {
 				// Batch response
 				if err := json.Unmarshal(m, &responses); err != nil {
+					c.debug("error unmarshalling batch responses: %v\n", err)
 					break
 				}
 			} else {
@@ -264,6 +270,7 @@ func (c *Client) handleMessages() {
 
 				resp := &response{}
 				if err := json.Unmarshal(m, resp); err != nil {
+					c.debug("error unmarshalling one response: %v\n", err)
 					break
 				}
 
@@ -286,6 +293,7 @@ func (c *Client) handleResponse(resp *response) {
 				sub.messages <- resp
 			}
 		}
+		c.Unlock()
 
 		return
 	}
@@ -344,7 +352,7 @@ WAIT:
 		c.removeSubscription(id)
 		sub.messages = make(chan *response)
 		if err := c.startSubscription(sub); err != nil {
-			c.log.Printf("failed to resume subscription '%s' with error: %s\n", sub.method, err)
+			c.debug("failed to resume subscription '%s' with error: %s\n", sub.method, err)
 		}
 	}
 }
@@ -401,66 +409,78 @@ func (c *Client) syncRequest(req *request) (*response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.transport.sendMessage(b); err != nil {
-		return nil, err
-	}
+
+	b = append(b, delimiter)
 
 	// Log request
-	if c.log != nil {
-		c.log.Println(req)
+	c.debug("sending msg: %s", b)
+
+	if err := c.transport.sendMessage(b); err != nil {
+		return nil, err
 	}
 
 	// Wait for the response
 	return <-res, nil
 }
 
-func encodeBatch(reqs ...*request) ([]byte, error) {
-	b := []byte{arrayStart}
-	for _, req := range reqs {
+func encodeBatch(reqs []*request) ([]byte, error) {
+	reqsJson := make([]string, len(reqs))
+	for i, req := range reqs {
 		x, err := req.encode()
 		if err != nil {
 			return nil, err
 		}
-		b = append(b, x...)
-		b = append(b, comma)
+
+		reqsJson[i] = string(x)
 	}
-	return append(b, arrayEnd, delimiter), nil
+
+	return []byte(arrayStart + strings.Join(reqsJson, comma) + arrayEnd), nil
 }
 
 // Dispatch a batch of synchronous requests, i.e. wait for it's result
 func (c *Client) syncBatchRequest(reqs []*request) ([]*response, error) {
+	reqMap := make(map[int]int, len(reqs))
 	// Setup a subscription for the request with proper cleanup
 	res := make(chan *response)
 	c.Lock()
-	for _, req := range reqs {
+	for i, req := range reqs {
 		c.subs[req.ID] = &subscription{messages: res}
+		reqMap[req.ID] = i
 	}
 	c.Unlock()
+
 	defer func() {
 		for _, req := range reqs {
-			c.removeSubscription(req.ID)
+			c.Lock()
+			delete(c.subs, req.ID)
+			c.Unlock()
 		}
+
+		close(res)
 	}()
 
 	// Encode and dispatch the request
-	b, err := encodeBatch(reqs...)
+	b, err := encodeBatch(reqs)
 	if err != nil {
 		return nil, err
 	}
+
+	b = append(b, delimiter)
+
+	// Log request
+	c.debug("sending msg: %s", b)
+
 	if err := c.transport.sendMessage(b); err != nil {
 		return nil, err
 	}
 
-	// Log request
-	if c.log != nil {
-		c.log.Println(reqs)
+	// Wait for the response
+	responses := make([]*response, len(reqs))
+	for range reqs {
+		resp := <-res
+		responses[reqMap[resp.ID]] = resp
 	}
 
-	// Wait for the response
-	var responses []*response
-	for range reqs {
-		responses = append(responses, <-res)
-	}
 	return responses, nil
 }
 
@@ -800,9 +820,7 @@ func (c *Client) GetVerboseTransaction(hash string) (*VerboseTx, error) {
 	tx := new(VerboseTx)
 
 	if ok := c.txCache.Load(hash, tx); ok {
-		if c.log != nil {
-			c.log.Printf("Tx %s found in cache", hash)
-		}
+		c.debug("Tx %s found in cache", hash)
 		return tx, nil
 	}
 
@@ -827,7 +845,7 @@ func (c *Client) GetVerboseTransaction(hash string) (*VerboseTx, error) {
 	if tx.Confirmations > 0 {
 		err := c.txCache.Store(hash, *tx)
 		if err != nil {
-			c.log.Printf("Store tx %s in cache failed: %v", hash, err)
+			c.debug("Store tx %s in cache failed: %v", hash, err)
 		}
 	}
 
@@ -879,7 +897,7 @@ func (c *Client) TransactionMerkle(tx string, height int) (tm *TxMerkle, err err
 func (c *Client) GetVerboseTransactionBatch(
 	hashes []string,
 ) ([]*VerboseTx, error) {
-	var txs []*VerboseTx
+	txs := make([]*VerboseTx, 0, len(hashes))
 
 	params := make([][]any, len(hashes))
 	for i, h := range hashes {
@@ -919,17 +937,33 @@ func (c *Client) EnrichVin(vins []Vin) ([]VinWithPrevout, error) {
 		hashes[i] = vin.TxID
 	}
 
-	txs, err := c.GetVerboseTransactionBatch(hashes)
-	if err != nil {
-		return nil, err
-	}
-
 	vinWithPrevouts := make([]VinWithPrevout, len(vins))
 
-	for i, tx := range txs {
-		vinWithPrevouts[i] = VinWithPrevout{
-			Vin:     &vins[i],
-			Prevout: &tx.Vout[vins[i].Vout],
+	for i := 0; i <= len(hashes)/DefaultBatchSize; i++ {
+		start := i * DefaultBatchSize
+
+		end := start + DefaultBatchSize
+
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+
+		batchHashes := hashes[start:end]
+		if len(batchHashes) == 0 {
+			break
+		}
+
+		txs, err := c.GetVerboseTransactionBatch(batchHashes)
+		if err != nil {
+			return nil, err
+		}
+
+		for j, tx := range txs {
+			vinIndex := start + j
+			vinWithPrevouts[vinIndex] = VinWithPrevout{
+				Vin:     &vins[vinIndex],
+				Prevout: &tx.Vout[vins[vinIndex].Vout],
+			}
 		}
 	}
 
@@ -957,9 +991,7 @@ func (c *Client) EnrichTransaction(
 		return nil, err
 	}
 
-	richTx.Vin = append(
-		richTx.Vin, vinWithPrevouts...,
-	)
+	richTx.Vin = vinWithPrevouts
 
 	// calculate inputsTotal
 	for _, vout := range tx.Vout {
@@ -976,7 +1008,7 @@ func (c *Client) EnrichTransaction(
 
 	err = c.txCache.Store(tx.TxID, richTx)
 	if err != nil {
-		c.log.Printf("Store detailedTx %s in cache failed: %v", tx.TxID, err)
+		c.debug("Store detailedTx %s in cache failed: %v", tx.TxID, err)
 	}
 
 	return &richTx, nil

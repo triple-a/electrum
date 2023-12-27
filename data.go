@@ -190,6 +190,5 @@ func (r *request) encode() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b = append(b, delimiter)
 	return b, nil
 }

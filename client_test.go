@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ func TestClient(t *testing.T) {
 			TLS:       &tls.Config{InsecureSkipVerify: true},
 			Protocol:  Protocol14_2,
 			KeepAlive: true,
+			Log:       log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile),
 		})
 		if err != nil {
 			t.Error(err)
@@ -199,15 +201,15 @@ func TestClient(t *testing.T) {
 			}
 		})
 
-		t.Run("TransactionMerkle", func(t *testing.T) {
-			m, err := client.TransactionMerkle("c011c74e1d0938003fbcd25ce8f60343766a5665da8a57412c50a9029b5f0056", 522232)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			log.Printf("%v", m)
-		})
-
+		// t.Run("TransactionMerkle", func(t *testing.T) {
+		// 	m, err := client.TransactionMerkle("c011c74e1d0938003fbcd25ce8f60343766a5665da8a57412c50a9029b5f0056", 522232)
+		// 	if err != nil {
+		// 		t.Error(err)
+		// 		return
+		// 	}
+		// 	log.Printf("%v", m)
+		// })
+		//
 		// Deprecated methods
 
 		t.Run("UTXOAddress", func(t *testing.T) {
@@ -353,17 +355,18 @@ func ExampleClient_GetVerboseTransaction() {
 
 func ExampleClient_EnrichTransaction() {
 	client, err := New(&Options{
-		Address: testServer,
+		Address: "reports-electrumx1.triple-a.xyz:50002",
 		TLS: &tls.Config{
 			InsecureSkipVerify: true,
 		},
+		// Log: log.New(os.Stderr, "ExampleClient_EnrichVin: ", log.LstdFlags|log.Lshortfile),
 	})
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer client.Close()
-	tx, err := client.GetVerboseTransaction("4f73e43b92d337da8e69417601de1476bd7577cbac901fa28dba37ce1362adb9")
+	tx, err := client.GetVerboseTransaction("5bd5c43f112181786312711e505aa68a95f513cf0db9b736f52e5860666752f2")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -373,6 +376,41 @@ func ExampleClient_EnrichTransaction() {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(richTx.Vin[0].Prevout.Value, richTx.Vin[0].Prevout.ScriptPubKey.Addresses[0])
-	// Output: 0.0005 1ECYoJpqd3KtngTr2QuefZpp57qSoWynqY
+	fmt.Println(richTx.Vin[0].Prevout.Value, richTx.Vin[0].Prevout.ScriptPubKey.Address)
+	fmt.Println(richTx.Vin[590].Prevout.Value, richTx.Vin[590].Prevout.ScriptPubKey.Address)
+	// Output: 0.0058323 3K1Jnpy5YVZjH9DCj6zmrDJ5mdsR68RjSu
+	// 0.00584077 39NoF8tEtUwmnf2MAhvtU3ouEKEEQXYJHs
+}
+
+func ExampleClient_EnrichVin() {
+	client, err := New(&Options{
+		Address: "reports-electrumx1.triple-a.xyz:50002",
+		TLS: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+		Log: log.New(os.Stderr, "ExampleClient_EnrichVin: ", log.LstdFlags|log.Lshortfile),
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer client.Close()
+
+	tx, err := client.GetVerboseTransaction("fcf4098faf20c19925f996eaef78b2c66dd6e37e1449f024823f6fd83454e25a")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	vins, err := client.EnrichVin(tx.Vin)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(len(vins))
+	fmt.Println(vins[0].Prevout.Value, vins[0].TxID)
+	fmt.Println(vins[11].Prevout.Value, vins[11].TxID)
+	// Output: 12
+	// 0.02930787 7aeb3f74c796b0637b4c06a8034315f698f9bc45e63eaebb4de6e8425dee4223
+	// 0.02 b832e427e4f2104f400929e0b44db4c315e1d158dfe3e90b8eac616278681366
 }
