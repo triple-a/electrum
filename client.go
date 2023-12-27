@@ -11,8 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 // Version flag for the library
@@ -37,7 +35,12 @@ var (
 
 // Message Delimiter, according to the protocol specification
 // http://docs.electrum.org/en/latest/protocol.html#format
-const delimiter = byte('\n')
+const (
+	delimiter  = byte('\n')
+	comma      = byte(',')
+	arrayStart = byte('[')
+	arrayEnd   = byte(']')
+)
 
 // Options define the available configuration options
 type Options struct {
@@ -215,6 +218,17 @@ func (c *Client) req(name string, params ...any) *request {
 	return req
 }
 
+// Build a batch request object
+func (c *Client) batchReq(name string, params [][]any) []*request {
+	requests := make([]*request, len(params))
+
+	for i, p := range params {
+		requests[i] = c.req(name, p...)
+	}
+
+	return requests
+}
+
 // Receive incoming network messages and the 'stop' signal
 func (c *Client) handleMessages() {
 	for {
@@ -233,31 +247,55 @@ func (c *Client) handleMessages() {
 			if c.log != nil {
 				c.log.Println(m)
 			}
-			resp := &response{}
-			if err := json.Unmarshal(m, resp); err != nil {
+
+			var result interface{}
+			if err := json.Unmarshal(m, &result); err == nil {
 				break
 			}
 
-			// Message routed by method name
-			if resp.Method != "" {
-				c.Lock()
-				for _, sub := range c.subs {
-					if sub.method == resp.Method {
-						sub.messages <- resp
-					}
+			var responses []*response
+			if _, ok := result.([]interface{}); ok {
+				// Batch response
+				if err := json.Unmarshal(m, &responses); err != nil {
+					break
 				}
-				c.Unlock()
-				break
+			} else {
+				// Single response
+
+				resp := &response{}
+				if err := json.Unmarshal(m, resp); err != nil {
+					break
+				}
+
+				responses = append(responses, resp)
 			}
 
-			// Message routed by ID
-			c.Lock()
-			sub, ok := c.subs[resp.ID]
-			c.Unlock()
-			if ok {
+			for _, resp := range responses {
+				c.handleResponse(resp)
+			}
+		}
+	}
+}
+
+func (c *Client) handleResponse(resp *response) {
+	// Message routed by method name
+	if resp.Method != "" {
+		c.Lock()
+		for _, sub := range c.subs {
+			if sub.method == resp.Method {
 				sub.messages <- resp
 			}
 		}
+
+		return
+	}
+
+	// Message routed by ID
+	c.Lock()
+	sub, ok := c.subs[resp.ID]
+	c.Unlock()
+	if ok {
+		sub.messages <- resp
 	}
 }
 
@@ -374,6 +412,56 @@ func (c *Client) syncRequest(req *request) (*response, error) {
 
 	// Wait for the response
 	return <-res, nil
+}
+
+func encodeBatch(reqs ...*request) ([]byte, error) {
+	b := []byte{arrayStart}
+	for _, req := range reqs {
+		x, err := req.encode()
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, x...)
+		b = append(b, comma)
+	}
+	return append(b, arrayEnd, delimiter), nil
+}
+
+// Dispatch a batch of synchronous requests, i.e. wait for it's result
+func (c *Client) syncBatchRequest(reqs []*request) ([]*response, error) {
+	// Setup a subscription for the request with proper cleanup
+	res := make(chan *response)
+	c.Lock()
+	for _, req := range reqs {
+		c.subs[req.ID] = &subscription{messages: res}
+	}
+	c.Unlock()
+	defer func() {
+		for _, req := range reqs {
+			c.removeSubscription(req.ID)
+		}
+	}()
+
+	// Encode and dispatch the request
+	b, err := encodeBatch(reqs...)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.transport.sendMessage(b); err != nil {
+		return nil, err
+	}
+
+	// Log request
+	if c.log != nil {
+		c.log.Println(reqs)
+	}
+
+	// Wait for the response
+	var responses []*response
+	for range reqs {
+		responses = append(responses, <-res)
+	}
+	return responses, nil
 }
 
 // Close will finish execution and properly terminate the underlying network transport
@@ -787,17 +875,65 @@ func (c *Client) TransactionMerkle(tx string, height int) (tm *TxMerkle, err err
 	return
 }
 
-// GetTransactionOutput gets the Vout from a transaction.
-func (c *Client) GetTransactionOutput(
-	hash string,
-	voutIndex uint32,
-) (*Vout, error) {
-	tx, err := c.GetVerboseTransaction(hash)
+// GetVerboseTransactionBatch gets the VerboseTx from a batch of transactions.
+func (c *Client) GetVerboseTransactionBatch(
+	hashes []string,
+) ([]*VerboseTx, error) {
+	var txs []*VerboseTx
+
+	params := make([][]any, len(hashes))
+	for i, h := range hashes {
+		params[i] = []any{h, true}
+	}
+
+	res, err := c.syncBatchRequest(c.batchReq("blockchain.transaction.get", params))
 	if err != nil {
 		return nil, err
 	}
 
-	return &tx.Vout[voutIndex], nil
+	for _, r := range res {
+		if r.Error != nil {
+			return nil, errors.New(r.Error.Message)
+		}
+
+		tx := new(VerboseTx)
+
+		b, err := json.Marshal(r.Result)
+		if err != nil {
+			return nil, err
+		}
+
+		if err = json.Unmarshal(b, tx); err != nil {
+			return nil, err
+		}
+
+		txs = append(txs, tx)
+	}
+	return txs, nil
+}
+
+func (c *Client) EnrichVin(vins []Vin) ([]VinWithPrevout, error) {
+	hashes := make([]string, len(vins))
+
+	for i, vin := range vins {
+		hashes[i] = vin.TxID
+	}
+
+	txs, err := c.GetVerboseTransactionBatch(hashes)
+	if err != nil {
+		return nil, err
+	}
+
+	vinWithPrevouts := make([]VinWithPrevout, len(vins))
+
+	for i, tx := range txs {
+		vinWithPrevouts[i] = VinWithPrevout{
+			Vin:     &vins[i],
+			Prevout: &tx.Vout[vins[i].Vout],
+		}
+	}
+
+	return vinWithPrevouts, nil
 }
 
 // Details a transaction by adding Prevout to Vin.
@@ -816,45 +952,29 @@ func (c *Client) EnrichTransaction(
 		return &richTx, nil
 	}
 
-	mtx := sync.Mutex{}
-	errGrp := errgroup.Group{}
-	errGrp.SetLimit(20)
-	for _, vin := range tx.Vin {
-		vin := vin // copy vin
-		errGrp.Go(func() error {
-			prevout, err := c.GetTransactionOutput(
-				vin.TxID,
-				vin.Vout,
-			)
-			if err != nil {
-				return err
-			}
-			mtx.Lock()
-			defer mtx.Unlock()
-			richTx.Vin = append(
-				richTx.Vin,
-				VinWithPrevout{
-					Vin:     &vin,
-					Prevout: prevout,
-				},
-			)
-			return nil
-		})
-	}
-	if err := errGrp.Wait(); err != nil {
+	vinWithPrevouts, err := c.EnrichVin(tx.Vin)
+	if err != nil {
 		return nil, err
 	}
 
-	// calculate inputsTotal, outputsTotal, feeInSat
+	richTx.Vin = append(
+		richTx.Vin, vinWithPrevouts...,
+	)
+
+	// calculate inputsTotal
 	for _, vout := range tx.Vout {
 		richTx.OutputsTotal += vout.Value
 	}
+
+	// calculate outputsTotal
 	for _, vin := range richTx.Vin {
 		richTx.InputsTotal += vin.Prevout.Value
 	}
+
+	// calculate fee
 	richTx.FeeInSat = int64(richTx.InputsTotal - richTx.OutputsTotal)
 
-	err := c.txCache.Store(tx.TxID, richTx)
+	err = c.txCache.Store(tx.TxID, richTx)
 	if err != nil {
 		c.log.Printf("Store detailedTx %s in cache failed: %v", tx.TxID, err)
 	}
