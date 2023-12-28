@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/glebarez/go-sqlite"
 )
 
 type TxCache struct {
@@ -16,7 +16,7 @@ type TxCache struct {
 func NewTxCache(db *sql.DB) (*TxCache, error) {
 	if db == nil {
 		var err error
-		db, err = sql.Open("sqlite3", "tx_cache.db")
+		db, err = sql.Open("sqlite", "tx_cache.db")
 		if err != nil {
 			return nil, err
 		}
