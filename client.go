@@ -449,16 +449,6 @@ func (c *Client) syncBatchRequest(reqs []*request) ([]*response, error) {
 	}
 	c.Unlock()
 
-	defer func() {
-		for _, req := range reqs {
-			c.Lock()
-			delete(c.subs, req.ID)
-			c.Unlock()
-		}
-
-		close(res)
-	}()
-
 	// Encode and dispatch the request
 	b, err := encodeBatch(reqs)
 	if err != nil {
@@ -475,10 +465,21 @@ func (c *Client) syncBatchRequest(reqs []*request) ([]*response, error) {
 	}
 
 	// Wait for the response
+	respCount := 0
+
 	responses := make([]*response, len(reqs))
-	for range reqs {
-		resp := <-res
+	for resp := range res {
+		c.Lock()
+		delete(c.subs, resp.ID)
+		c.Unlock()
+
 		responses[reqMap[resp.ID]] = resp
+
+		respCount++
+
+		if respCount == len(reqs) {
+			close(res)
+		}
 	}
 
 	return responses, nil
