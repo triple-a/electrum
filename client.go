@@ -42,8 +42,6 @@ var (
 	ErrUnreachableHost   = errors.New("UNREACHABLE_HOST")
 )
 
-var DefaultBatchSize = 70
-
 // Options define the available configuration options
 type Options struct {
 	// Address of the server to use for network communications
@@ -69,7 +67,11 @@ type Options struct {
 	// If provided, will be used as logging sink
 	Log *log.Logger
 
+	// Timeout for network operations
 	Timeout time.Duration
+
+	// The maximum number of transactions to fetch in a single batch
+	MaxBatchSize uint32
 }
 
 // Client defines the protocol client instance structure and interface
@@ -97,6 +99,8 @@ type Client struct {
 	sync.Mutex
 
 	txCache *TxCache
+
+	maxBatchSize uint32
 }
 
 type subscription struct {
@@ -139,6 +143,10 @@ func New(options *Options) (*Client, error) {
 		return nil, err
 	}
 
+	if options.MaxBatchSize == 0 {
+		options.MaxBatchSize = 80
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &Client{
 		transport:    t,
@@ -153,31 +161,13 @@ func New(options *Options) (*Client, error) {
 		Version:      options.Version,
 		Protocol:     options.Protocol,
 		txCache:      txCache,
+		maxBatchSize: options.MaxBatchSize,
 	}
 
 	// Automatically send a 'server.version' or 'server.ping' request every 60 seconds as a keep-alive
 	// signal to the server
 	if options.KeepAlive {
-		client.ping = time.NewTicker(60 * time.Second)
-		go func() {
-			defer client.ping.Stop()
-			for {
-				select {
-				case <-client.ping.C:
-					// Deliberately ignore errors produced by "ping" messages
-					// "server.ping" is not recognized by the server in the current release (1.4.3)
-					if b, err := client.req("server.version", client.Version, client.Protocol).encode(); err == nil {
-						/* #nosec */
-						err = client.transport.sendMessage(b)
-						if err != nil && client.log != nil {
-							client.log.Println(err)
-						}
-					}
-				case <-client.bgProcessing.Done():
-					return
-				}
-			}
-		}()
+		client.keepAlive()
 	}
 
 	// Monitor transport state
@@ -199,6 +189,30 @@ func New(options *Options) (*Client, error) {
 
 	go client.handleMessages()
 	return client, nil
+}
+
+func (c *Client) keepAlive() {
+	c.ping = time.NewTicker(60 * time.Second)
+
+	go func() {
+		defer c.ping.Stop()
+		for {
+			select {
+			case <-c.ping.C:
+				// Deliberately ignore errors produced by "ping" messages
+				// "server.ping" is not recognized by the server in the current release (1.4.3)
+				if b, err := c.req("server.version", c.Version, c.Protocol).encode(); err == nil {
+					/* #nosec */
+					err = c.transport.sendMessage(b)
+					if err != nil && c.log != nil {
+						c.log.Println(err)
+					}
+				}
+			case <-c.bgProcessing.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (c *Client) debug(msg string, args ...any) {
@@ -954,10 +968,10 @@ func (c *Client) EnrichVin(vins []Vin) ([]VinWithPrevout, error) {
 
 	vinWithPrevouts := make([]VinWithPrevout, len(vins))
 
-	for i := 0; i <= len(hashes)/DefaultBatchSize; i++ {
-		start := i * DefaultBatchSize
+	for i := 0; i <= len(hashes)/int(c.maxBatchSize); i++ {
+		start := i * int(c.maxBatchSize)
 
-		end := start + DefaultBatchSize
+		end := start + int(c.maxBatchSize)
 
 		if end > len(hashes) {
 			end = len(hashes)
