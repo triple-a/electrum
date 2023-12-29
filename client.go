@@ -23,6 +23,8 @@ const (
 	Protocol12   = "1.2"
 	Protocol14   = "1.4"
 	Protocol14_2 = "1.4.2"
+
+	BTCDecimals = 1e8
 )
 
 // Common errors
@@ -972,15 +974,15 @@ func (c *Client) EnrichVin(vins []Vin) ([]VinWithPrevout, error) {
 }
 
 // Details a transaction by adding Prevout to Vin.
-func (c *Client) EnrichTransaction(
-	tx *VerboseTx,
-) (*RichTx, error) {
+func (c *Client) EnrichTransaction(tx *VerboseTx, blockHeight int64) (*RichTx, error) {
 	richTx := RichTx{
 		VerboseTx:    *tx,
 		Vin:          []VinWithPrevout{}, // empty now
 		InputsTotal:  0,
 		OutputsTotal: 0,
 		FeeInSat:     0,
+		Height:       blockHeight,
+		Fee:          0,
 	}
 
 	if ok := c.txCache.Load(tx.TxID, &richTx); ok {
@@ -1006,6 +1008,8 @@ func (c *Client) EnrichTransaction(
 
 	// calculate fee
 	richTx.FeeInSat = int64(richTx.InputsTotal - richTx.OutputsTotal)
+
+	richTx.Fee = float64(richTx.FeeInSat) / BTCDecimals
 
 	err = c.txCache.Store(tx.TxID, richTx)
 	if err != nil {

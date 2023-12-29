@@ -122,7 +122,7 @@ type RichTx struct {
 	OutputsTotal float64          `json:"outputs_total"`
 	FeeInSat     int64            `json:"fee_in_sat"`
 	Height       int64            `json:"height"`
-	Fee          uint32           `json:"fee,omitempty"`
+	Fee          float64          `json:"fee,omitempty"`
 }
 
 // TxMerkle provides the merkle branch of a given transaction
