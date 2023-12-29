@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -24,7 +25,7 @@ func TestClient(t *testing.T) {
 			TLS:       &tls.Config{InsecureSkipVerify: true},
 			Protocol:  Protocol14_2,
 			KeepAlive: true,
-			Log:       log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile),
+			Log:       slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 		})
 		if err != nil {
 			t.Error(err)
@@ -388,7 +389,7 @@ func ExampleClient_EnrichVin() {
 		TLS: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		Log: log.New(os.Stderr, "ExampleClient_EnrichVin: ", log.LstdFlags|log.Lshortfile),
+		Log: slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 	})
 	if err != nil {
 		fmt.Println(err)

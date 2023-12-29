@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,7 +65,7 @@ type Options struct {
 	TLS *tls.Config
 
 	// If provided, will be used as logging sink
-	Log *log.Logger
+	Log *slog.Logger
 
 	// Timeout for network operations
 	Timeout time.Duration
@@ -90,7 +90,7 @@ type Client struct {
 	counter      int
 	subs         map[int]*subscription
 	ping         *time.Ticker
-	log          *log.Logger
+	log          *slog.Logger
 	agent        string
 	bgProcessing context.Context
 	cleanUp      context.CancelFunc
@@ -205,7 +205,7 @@ func (c *Client) keepAlive() {
 					/* #nosec */
 					err = c.transport.sendMessage(b)
 					if err != nil && c.log != nil {
-						c.log.Println(err)
+						c.log.Error("%v", err)
 					}
 				}
 			case <-c.bgProcessing.Done():
@@ -217,7 +217,13 @@ func (c *Client) keepAlive() {
 
 func (c *Client) debug(msg string, args ...any) {
 	if c.log != nil {
-		_ = c.log.Output(2, fmt.Sprintf(msg, args...))
+		c.log.Debug(msg, args...)
+	}
+}
+
+func (c *Client) error(msg string, args ...any) {
+	if c.log != nil {
+		c.log.Error(msg, args...)
 	}
 }
 
@@ -262,13 +268,13 @@ func (c *Client) handleMessages() {
 			c.cleanUp()
 			return
 		case err := <-c.transport.errors:
-			c.debug("transport error: %s", err)
+			c.error("transport error: %s", err)
 		case m := <-c.transport.messages:
 			c.debug("received msg: %s", m)
 
 			var result interface{}
 			if err := json.Unmarshal(m, &result); err != nil {
-				c.debug("error unmarshalling any: %v\n", err)
+				c.error("error unmarshalling any: %v\n", err)
 				break
 			}
 
@@ -276,7 +282,7 @@ func (c *Client) handleMessages() {
 			if _, ok := result.([]interface{}); ok {
 				// Batch response
 				if err := json.Unmarshal(m, &responses); err != nil {
-					c.debug("error unmarshalling batch responses: %v\n", err)
+					c.error("error unmarshalling batch responses: %v\n", err)
 					break
 				}
 			} else {
@@ -284,7 +290,7 @@ func (c *Client) handleMessages() {
 
 				resp := &response{}
 				if err := json.Unmarshal(m, resp); err != nil {
-					c.debug("error unmarshalling one response: %v\n", err)
+					c.error("error unmarshalling one response: %v\n", err)
 					break
 				}
 
@@ -366,7 +372,7 @@ WAIT:
 		c.removeSubscription(id)
 		sub.messages = make(chan *response)
 		if err := c.startSubscription(sub); err != nil {
-			c.debug("failed to resume subscription '%s' with error: %s\n", sub.method, err)
+			c.error("failed to resume subscription '%s' with error: %s\n", sub.method, err)
 		}
 	}
 }
@@ -860,7 +866,7 @@ func (c *Client) GetVerboseTransaction(hash string) (*VerboseTx, error) {
 	if tx.Confirmations > 0 {
 		err := c.txCache.Store(hash, *tx)
 		if err != nil {
-			c.debug("Store tx %s in cache failed: %v", hash, err)
+			c.error("Store tx %s in cache failed: %v", hash, err)
 		}
 	}
 
@@ -898,7 +904,6 @@ func (c *Client) TransactionMerkle(tx string, height int) (tm *TxMerkle, err err
 	}
 
 	b, err := json.Marshal(res.Result)
-	log.Printf("%s", res.Result)
 	if err != nil {
 		return
 	}
@@ -959,7 +964,15 @@ func (c *Client) GetVerboseTransactionBatch(
 		}
 
 		txs[paramsMap[i]] = tx
+
+		if tx.Confirmations > 0 {
+			err := c.txCache.Store(tx.TxID, *tx)
+			if err != nil {
+				c.error("Store tx %s in cache failed: %v", tx.TxID, err)
+			}
+		}
 	}
+
 	return txs, nil
 }
 
@@ -1043,7 +1056,7 @@ func (c *Client) EnrichTransaction(tx *VerboseTx, blockHeight int64) (*RichTx, e
 
 	err = c.txCache.Store(tx.TxID, richTx)
 	if err != nil {
-		c.debug("Store detailedTx %s in cache failed: %v", tx.TxID, err)
+		c.error("Store detailedTx %s in cache failed: %v", tx.TxID, err)
 	}
 
 	return &richTx, nil
