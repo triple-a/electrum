@@ -933,6 +933,10 @@ func (c *Client) GetVerboseTransactionBatch(
 		paramsMap[len(params)-1] = i
 	}
 
+	if len(params) == 0 {
+		return txs, nil
+	}
+
 	res, err := c.syncBatchRequest(c.batchReq("blockchain.transaction.get", params))
 	if err != nil {
 		return nil, err
