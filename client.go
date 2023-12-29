@@ -13,11 +13,11 @@ import (
 	"time"
 )
 
-// Version flag for the library
-const Version = "0.5.0"
-
-// Protocol tags
 const (
+	// Version flag for the library
+	Version = "0.5.0"
+
+	// Protocol tags
 	Protocol10   = "1.0"
 	Protocol11   = "1.1"
 	Protocol12   = "1.2"
@@ -25,6 +25,15 @@ const (
 	Protocol14_2 = "1.4.2"
 
 	BTCDecimals = 1e8
+
+	// Message Delimiter, according to the protocol specification
+	// http://docs.electrum.org/en/latest/protocol.html#format
+	delimiter  = byte('\n')
+	comma      = ","
+	arrayStart = "["
+	arrayEnd   = "]"
+
+	DefaultBatchSize = 70
 )
 
 // Common errors
@@ -33,17 +42,6 @@ var (
 	ErrUnavailableMethod = errors.New("UNAVAILABLE_METHOD")
 	ErrRejectedTx        = errors.New("REJECTED_TRANSACTION")
 	ErrUnreachableHost   = errors.New("UNREACHABLE_HOST")
-)
-
-// Message Delimiter, according to the protocol specification
-// http://docs.electrum.org/en/latest/protocol.html#format
-const (
-	delimiter  = byte('\n')
-	comma      = ","
-	arrayStart = "["
-	arrayEnd   = "]"
-
-	DefaultBatchSize = 80
 )
 
 // Options define the available configuration options
