@@ -900,11 +900,25 @@ func (c *Client) TransactionMerkle(tx string, height int) (tm *TxMerkle, err err
 func (c *Client) GetVerboseTransactionBatch(
 	hashes []string,
 ) ([]*VerboseTx, error) {
-	txs := make([]*VerboseTx, 0, len(hashes))
+	txs := make([]*VerboseTx, len(hashes))
 
-	params := make([][]any, len(hashes))
-	for i, h := range hashes {
-		params[i] = []any{h, true}
+	params := make([][]any, 0, len(hashes))
+
+	paramsMap := make(map[int]int, len(hashes))
+
+	for i, hash := range hashes {
+		tx := new(VerboseTx)
+
+		// if tx is in cache, use it
+		if ok := c.txCache.Load(hash, tx); ok {
+			txs[i] = tx
+
+			continue
+		}
+
+		params = append(params, []any{hash, true})
+
+		paramsMap[len(params)-1] = i
 	}
 
 	res, err := c.syncBatchRequest(c.batchReq("blockchain.transaction.get", params))
@@ -912,7 +926,7 @@ func (c *Client) GetVerboseTransactionBatch(
 		return nil, err
 	}
 
-	for _, r := range res {
+	for i, r := range res {
 		if r.Error != nil {
 			return nil, errors.New(r.Error.Message)
 		}
@@ -928,7 +942,7 @@ func (c *Client) GetVerboseTransactionBatch(
 			return nil, err
 		}
 
-		txs = append(txs, tx)
+		txs[paramsMap[i]] = tx
 	}
 	return txs, nil
 }

@@ -371,7 +371,7 @@ func ExampleClient_EnrichTransaction() {
 		fmt.Println(err)
 		return
 	}
-	richTx, err := client.EnrichTransaction(tx)
+	richTx, err := client.EnrichTransaction(tx, 819827)
 	if err != nil {
 		fmt.Println(err)
 		return
