@@ -32,8 +32,6 @@ const (
 	comma      = ","
 	arrayStart = "["
 	arrayEnd   = "]"
-
-	DefaultBatchSize = 70
 )
 
 // Common errors
@@ -43,6 +41,8 @@ var (
 	ErrRejectedTx        = errors.New("REJECTED_TRANSACTION")
 	ErrUnreachableHost   = errors.New("UNREACHABLE_HOST")
 )
+
+var DefaultBatchSize = 70
 
 // Options define the available configuration options
 type Options struct {
