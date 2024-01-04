@@ -24,7 +24,7 @@ const (
 	Protocol14   = "1.4"
 	Protocol14_2 = "1.4.2"
 
-	BTCDecimals = 1e8
+	BitcoinBase = 1e8
 
 	// Message Delimiter, according to the protocol specification
 	// http://docs.electrum.org/en/latest/protocol.html#format
@@ -1043,16 +1043,18 @@ func (c *Client) EnrichTransaction(tx *VerboseTx, blockHeight int64) (*RichTx, e
 	for _, vout := range tx.Vout {
 		richTx.OutputsTotal += vout.Value
 	}
+	richTx.OutputsTotal = Round8(richTx.OutputsTotal)
 
 	// calculate outputsTotal
 	for _, vin := range richTx.Vin {
 		richTx.InputsTotal += vin.Prevout.Value
 	}
 
-	// calculate fee
-	richTx.FeeInSat = int64(richTx.InputsTotal - richTx.OutputsTotal)
+	richTx.InputsTotal = Round8(richTx.InputsTotal)
 
-	richTx.Fee = float64(richTx.FeeInSat) / BTCDecimals
+	// calculate fee
+	richTx.Fee = Round8(richTx.InputsTotal - richTx.OutputsTotal)
+	richTx.FeeInSat = int64(richTx.Fee * BitcoinBase)
 
 	err = c.txCache.Store(tx.TxID, richTx)
 	if err != nil {

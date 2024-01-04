@@ -1,5 +1,7 @@
 package electrum
 
+import "math"
+
 func GetAddressFromVout(vout *Vout) string {
 	if vout.ScriptPubKey.Address != "" {
 		return vout.ScriptPubKey.Address
@@ -41,4 +43,9 @@ func FindAddressFunc[E any](
 			}
 		}
 	}
+}
+
+// round to 8 decimal places
+func Round8(f float64) float64 {
+	return math.Round(f*BitcoinBase) / BitcoinBase
 }
