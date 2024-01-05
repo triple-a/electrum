@@ -217,13 +217,13 @@ func (c *Client) keepAlive() {
 
 func (c *Client) debug(msg string, args ...any) {
 	if c.log != nil {
-		c.log.Debug(msg, args...)
+		c.log.Debug(fmt.Sprintf(msg, args...))
 	}
 }
 
 func (c *Client) error(msg string, args ...any) {
 	if c.log != nil {
-		c.log.Error(msg, args...)
+		c.log.Error(fmt.Sprintf(msg, args...))
 	}
 }
 
