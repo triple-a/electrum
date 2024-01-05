@@ -1044,6 +1044,15 @@ func (c *Client) EnrichTransaction(tx *VerboseTx, blockHeight int64) (*RichTx, e
 		return &richTx, nil
 	}
 
+	// set tx merkle
+	tm, err := c.TransactionMerkle(tx.TxID, int(blockHeight))
+	if err != nil {
+		return nil, err
+	}
+
+	richTx.Merkle = *tm
+
+	// enrich vin
 	vinWithPrevouts, err := c.EnrichVin(tx.Vin)
 	if err != nil {
 		return nil, err
