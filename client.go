@@ -325,18 +325,6 @@ func (c *Client) handleResponse(resp *response) {
 	if ok {
 		sub.messages <- resp
 	}
-
-	// // Handle errors
-	// if resp.Error != nil {
-	// 	c.error("error response: %s", resp.Error.Message)
-
-	// 	c.Lock()
-	// 	for _, sub := range c.subs {
-	// 		sub.messages <- resp
-	// 		break
-	// 	}
-	// 	c.Unlock()
-	// }
 }
 
 // Remove and existing messages subscription
