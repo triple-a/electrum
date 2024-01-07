@@ -160,7 +160,7 @@ LOOP:
 
 			if err != nil {
 				t.errors <- err
-				break
+				break LOOP
 			}
 			t.messages <- line
 		}
